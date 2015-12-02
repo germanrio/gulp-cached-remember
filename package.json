@@ -1,7 +1,7 @@
 {
   "name": "gulp-cached-remember",
   "version": "1.0.0",
-  "description": "Cache files going through the stream and adds previously seen files back into the stream in the same order seen.",
+  "description": "Caches files going through the stream and adds previously seen files back into the stream in the same order seen.",
   "homepage": "https://github.com/germanrio/gulp-cached-remember",
   "repository": {
     "type": "git",

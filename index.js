@@ -17,8 +17,8 @@ function gulpCachedRemember(cacheName, opts) {
   var cache,
       cacheOrder,
       cacheFiles,
-      isNewCache = false,
-      firstRound = true;
+      isMaster = false,
+      isNewCache = false;
 
   if (cacheName !== undefined && typeof cacheName !== 'number' && typeof cacheName !== 'string') {
     throw new util.PluginError(pluginName, 'Usage: require("' + pluginName +
@@ -28,7 +28,7 @@ function gulpCachedRemember(cacheName, opts) {
 
   // Creating cache if needed
   if (!caches[cacheName]) {
-    caches[cacheName] = {order: [], files: {}, ended: false};
+    caches[cacheName] = {order: [], files: {}, ended: true};
     needsFlushing[cacheName] = [];
     isNewCache = true;
   }
@@ -36,6 +36,12 @@ function gulpCachedRemember(cacheName, opts) {
   cache = caches[cacheName];
   cacheOrder = cache.order;
   cacheFiles = cache.files;
+
+  // Set master for concurrency tasks
+  if (cache.ended) {
+    cache.ended = false;
+    isMaster = true;
+  }
 
   function caching(file, enc, callback) {
     var id = file.path,
@@ -45,16 +51,16 @@ function gulpCachedRemember(cacheName, opts) {
 
     // Caching is only managed by new cache instances
     // (allows concurrency cached streams)
-    if (!isNewCache) {
+    if (!isMaster) {
       return callback();
     }
 
-    cache.ended = false;
+    cache.ended = false; // Needed???
     checksum = getChecksum(file, opts && opts.useHash);
 
     // Files not cached are ordered
     if (!cacheFiles[id]) {
-      if (firstRound) {
+      if (isNewCache) {
         cacheOrder.push(id);
       }
       else {
@@ -68,6 +74,14 @@ function gulpCachedRemember(cacheName, opts) {
     if (!cacheFiles[id] || !checksum || checksum !== cacheFiles[id].checksum) {
       cacheFiles[id].checksum = checksum;
       this.push(file);
+
+      // Files modified since last built
+      if (!isNewCache) {
+        this.emit(pluginName + ':file-modified', {
+          cacheName: cacheName,
+          filePath: id
+        });
+      }
     }
 
     previousFile = file;
@@ -75,24 +89,24 @@ function gulpCachedRemember(cacheName, opts) {
   }
 
   function endCaching(callback) {
-    if (isNewCache) {
-      firstRound = false;
+    if (isMaster) {
+      isNewCache = false;
     }
     callback();
   }
 
   function remember(file, enc, callback) {
-    if (isNewCache) {
+    if (isMaster) {
       cacheFiles[file.path].data = file;
     }
     callback();
   }
 
   function endRemember(callback) {
-    if (isNewCache || cache.ended) {
+    if (isMaster || cache.ended) {
       this.emit(pluginName + ':cache-processed', {
         cacheName: cacheName,
-        isNewCache: isNewCache
+        isMaster: isMaster
       });
 
       flush.call(this, callback);
@@ -121,7 +135,7 @@ function gulpCachedRemember(cacheName, opts) {
 
     this.emit(pluginName + ':cache-flush', {
       cacheName: cacheName,
-      isNewCache: isNewCache
+      isMaster: isMaster
     });
 
     callback();
